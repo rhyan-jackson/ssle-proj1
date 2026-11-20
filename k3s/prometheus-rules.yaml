@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+data:
+  rules.yml: |
+    groups:
+      - name: anomalias
+        rules:
+          - alert: TaxaDeIngestaoAlta
+            expr: sum(rate(ingest_requests_total[1m])) > 5
+            for: 30s
+            labels:
+              severity: warning
+              categoria: volumetria
+            annotations:
+              summary: "Taxa de ingestao acima do normal"
+              description: "{{ $value | humanize }} pedidos/s, baseline e 0.6/s"
+
+          - alert: LatenciaIngestaoAlta
+            expr: histogram_quantile(0.95, sum by (le) (rate(ingest_latency_seconds_bucket[2m]))) > 0.5
+            for: 30s
+            labels:
+              severity: warning
+              categoria: latencia
+            annotations:
+              summary: "p95 da ingestao acima de 500ms"
+
+          - alert: ErrosDeEncaminhamento
+            expr: sum(rate(ingest_forward_errors_total[2m])) > 0
+            for: 1m
+            labels:
+              severity: critical
+              categoria: disponibilidade
+            annotations:
+              summary: "Ingestion nao consegue escrever no storage"
+
+          - alert: ServicoNaoPronto
+            expr: up{job="kubernetes-pods"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              categoria: disponibilidade
+            annotations:
+              summary: "Alvo inacessivel: {{ $labels.pod }}"
+
+          - alert: StorageDesaparecido
+            expr: absent(up{job="kubernetes-pods", app="storage"})
+            for: 30s
+            labels:
+              severity: critical
+              categoria: disponibilidade
+            annotations:
+              summary: "Nenhum pod de storage esta a ser monitorizado."
+              description: "O servico desapareceu ou perdeu os labels"
+
+      - name: correlacao
+        rules:
+          - alert: CausaRaizDoS
+            expr: |
+              (sum(rate(ingest_requests_total[1m])) > 5)
+              and
+              (sum(rate(node_cpu_seconds_total{mode="user"}[1m])) > 1)
+              and
+              (histogram_quantile(0.95, sum by (le) (rate(ingest_latency_seconds_bucket[2m]))) > 0.3)
+            for: 30s
+            labels:
+              severity: critical
+              categoria: correlacao
+            annotations:
+              summary: "DoS volumetrico: carga, CPU e latencia a subir em conjunto"
+
+          - alert: RegistosDivergentes
+            expr: |
+              registry_services_registered
+                >
+              count(up{job="kubernetes-pods", app=~"registry|storage|ingestion|analytics|sensor"} == 1)
+            for: 2m
+            labels:
+              severity: warning
+              categoria: descoberta
+            annotations:
+              summary: "Registry tem mais servicos do que pods reais"
+
+      - name: integridade
+        rules:
+          - alert: PayloadAdulterado
+            expr: sum(rate(storage_out_of_range_total[2m])) > 0
+            for: 30s
+            labels:
+              severity: critical
+              categoria: integridade
+            annotations:
+              summary: "Leituras fora da faixa plausivel chegando ao storage"
+              description: "{{ $value | humanize }} leituras/s rejeitadas como implausiveis"

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      nodeSelector:
+        role: worker
+      containers:
+        - name: registry
+          image: 10.255.255.44:5000/registry:v2
+          ports:
+            - containerPort: 5050
+              name: metrics
+          env:
+            - name: PORT
+              value: "5050"
+            - name: SELF_URL
+              value: "http://registry:5050"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+spec:
+  selector:
+    app: registry
+  ports:
+    - port: 5050
+      targetPort: 5050
