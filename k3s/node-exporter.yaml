@@ -18,6 +18,7 @@ spec:
       containers:
         - name: node-exporter
           image: prom/node-exporter:latest
+          imagePullPolicy: IfNotPresent
           args:
             - "--path.rootfs=/host"
           ports:
