@@ -18,7 +18,7 @@ TEMP_MAX = float(os.environ.get("TEMP_MAX", "60"))
 INSERTED = Counter("storage_inserts_total", "Linhas inseridas em temperatures")
 LAST_TEMP = Gauge("storage_last_temperature", "Ultima temperatura recebida por dispositivo", ["device_id"])
 READS = Counter("storage_reads_total", "Consultas a /temperatures")
-OUT_OF_RANGE = Counter("storage_out_of_range_total", "Leituras fora da faixa plausivel", ["device_id"])
+OUT_OF_RANGE = Counter("storage_out_of_range_total", "Leituras fora da faixa plausivel", ["device_id", "location"])
 QUARANTINED = Gauge("storage_quarantined_rows", "Linhas marcadas como nao confiaveis")
 
 def init_db():
@@ -32,6 +32,8 @@ def init_db():
     cols = [r[1] for r in conn.execute("PRAGMA table_info(temperatures)")]
     if "trusted" not in cols:
         conn.execute("ALTER TABLE temperatures ADD COLUMN trusted INTEGER DEFAULT 1")
+    if "location" not in cols:
+        conn.execute("ALTER TABLE temperatures ADD COLUMN location TEXT")
     conn.commit()
     QUARANTINED.set(conn.execute("SELECT COUNT(*) FROM temperatures WHERE trusted = 0").fetchone()[0])
     conn.close()
@@ -52,15 +54,16 @@ def store():
     d = request.get_json()
     trusted = 1 if plausible(d["temperature"]) else 0
     conn = sqlite3.connect(DB)
+    location = d.get("location")
     conn.execute(
-        "INSERT INTO temperatures (device_id, temperature, trusted) VALUES (?, ?, ?)",
-        (d["device_id"], d["temperature"], trusted),
+        "INSERT INTO temperatures (device_id, location, temperature, trusted) VALUES (?, ?, ?, ?)",
+        (d["device_id"], location, d["temperature"], trusted),
     )
     conn.commit(); conn.close()
     INSERTED.inc()
     LAST_TEMP.labels(device_id=d["device_id"]).set(d["temperature"])
     if not trusted:
-        OUT_OF_RANGE.labels(device_id=d["device_id"]).inc()
+        OUT_OF_RANGE.labels(device_id=d["device_id"], location=location or "unknown").inc()
         conn = sqlite3.connect(DB)
         QUARANTINED.set(conn.execute("SELECT COUNT(*) FROM temperatures WHERE trusted = 0").fetchone()[0])
         conn.close()
@@ -69,17 +72,24 @@ def store():
 @app.route("/temperatures", methods=["GET"])
 def temperatures():
     only_trusted = request.args.get("trusted") == "1"
-    sql = "SELECT device_id, temperature, timestamp, trusted FROM temperatures"
+    location = request.args.get("location")
+    sql = "SELECT device_id, temperature, timestamp, trusted, location FROM temperatures"
+    where = []
     if only_trusted:
-        sql += " WHERE trusted = 1"
+        where.append("trusted = 1")
+    if location:
+        where.append("location = ?")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     conn = sqlite3.connect(DB)
-    rows = conn.execute(sql).fetchall()
+    rows = conn.execute(sql, (location,) if location else ()).fetchall()
     quarantined = conn.execute("SELECT COUNT(*) FROM temperatures WHERE trusted = 0").fetchone()[0]
     conn.close()
     QUARANTINED.set(quarantined)
     READS.inc()
     return jsonify([
-        {"device_id": r[0], "temperature": r[1], "timestamp": r[2], "trusted": bool(r[3])}
+        {"device_id": r[0], "temperature": r[1], "timestamp": r[2], "trusted": bool(r[3]),
+         "location": r[4]}
         for r in rows
     ])
 

@@ -13,6 +13,7 @@ PORT = int(os.environ.get("PORT", 5003))
 
 QUERIES = Counter("analytics_requests_total", "Pedidos recebidos", ["endpoint"])
 LAST_AVG = Gauge("analytics_average_temperature", "Ultima media calculada")
+LOCATIONS = Counter("analytics_locations_reported_total", "Agregacoes por localizacao")
 UPSTREAM_ERRORS = Counter("analytics_upstream_errors_total", "Falhas ao consultar o storage")
 
 LISTENERS = Counter("analytics_storage_listeners", "Resolucoes do storage")
@@ -55,6 +56,23 @@ def per_device():
     for r in data:
         out.setdefault(r["device_id"], []).append(r["temperature"])
     return jsonify({k: round(sum(v) / len(v), 2) for k, v in out.items()})
+
+@app.route("/by-location", methods=["GET"])
+def by_location():
+    QUERIES.labels(endpoint="by-location").inc()
+    try:
+        data = rows()
+    except Exception:
+        UPSTREAM_ERRORS.inc()
+        raise
+    buckets = {}
+    for r in data:
+        location = r.get("location")
+        if not location:
+            continue
+        buckets.setdefault(location, []).append(r["temperature"])
+    LOCATIONS.inc()
+    return jsonify({k: round(sum(v) / len(v), 2) for k, v in sorted(buckets.items())})
 
 @app.route("/metrics")
 def metrics():
