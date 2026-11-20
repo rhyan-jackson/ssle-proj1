@@ -27,7 +27,7 @@ spec:
         role: worker
       containers:
         - name: storage
-          image: 10.255.255.44:5000/storage:v5
+          image: 10.255.255.44:5000/storage:v6
           ports:
             - containerPort: 5002
               name: metrics

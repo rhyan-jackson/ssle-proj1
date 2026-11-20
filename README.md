@@ -23,9 +23,9 @@ painel.sh  starts both panels on the host browser: Prometheus and Wazuh
 | Element | Where it runs | What it is |
 |---|---|---|
 | `registry` | K3s pod, `:5050` | service registry, name resolution of the architecture |
-| `sensor` ×3 | K3s pod, `:9100` metrics | one reading every 5 s, identity from `metadata.name` |
+| `sensor` ×3 | K3s StatefulSet (`sensor-0..2`), `:9100` metrics | one reading every 5 s; the identity is built as `site.zone.node.element`, e.g. `ua.lab.k3s-node1.sensor-0` |
 | `ingestion` | K3s pod, `:5001` | receives `/ingest`, forwards to storage |
-| `storage` | K3s pod, `:5002` + PVC 1 Gi | SQLite on `/data/temp_data.db`, plausibility check and quarantine |
+| `storage` | K3s pod, `:5002` + PVC 1 Gi | SQLite on `/data/temp_data.db`, plausibility check, quarantine, `location` column |
 | `analytics` | K3s pod, `:5003` | reads only trusted rows and aggregates |
 | `prometheus` | K3s pod, `:9090` | scrapes `/metrics` every 15 s, 8 rules in 3 groups |
 | `alertmanager` | K3s pod, `:9093` | groups and routes, webhook receiver with `send_resolved` |
@@ -43,6 +43,11 @@ painel.sh  starts both panels on the host browser: Prometheus and Wazuh
 | Volumetric DoS (`ab`) | `ingestion` | numeric: rate above 5 req/s, p95 latency, correlation with CPU | `NetworkPolicy` created by the webhook, removed on resolve |
 | Man-in-the-middle | sensor → `ingestion` | numeric: plausibility counter published by `storage` | source blocked by `NetworkPolicy`; the row is stored with `trusted = 0` |
 | Shellshock (CVE-2014-6271) | `victim` (apache) | semantic: Wazuh rule 31168 on the access log | `firewall-drop` by the agent, `iptables` for 60 s; reputation list for repeat offenders |
+
+Identity is constructed, not assigned. `SITE` and `ZONE` come from the manifest, the node from
+`spec.nodeName` through the downward API, and the element from the pod ordinal of a StatefulSet, which is
+stable across restarts. The name alone says where the element is, in physical and logical terms, and the
+`location` prefix travels with every reading, so `analytics` can aggregate by location.
 
 The man-in-the-middle is executed by poisoning the service registry, which has no authentication and
 overwrites entries by name. The Shellshock rule ships with Wazuh; what this project adds is the binding
