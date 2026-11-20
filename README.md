@@ -15,7 +15,7 @@ wazuh/     ossec.conf, local rules and the reputation lists of the manager
 victim/    ossec.conf of the agent on the victim
 vm/        what runs outside Kubernetes: the containers, the registry, the panel
 docs/      the report
-painel.sh  starts the Prometheus panel for the host browser
+painel.sh  starts both panels on the host browser: Prometheus and Wazuh
 ```
 
 ## Elements
@@ -64,6 +64,11 @@ incus exec k3s-master -- kubectl apply -f - < /home/ssle/ssle-proj1/k3s/<svc>.ya
 
 The two Wazuh containers and the image registry are not managed by K3s. Their files in `wazuh/` and
 `victim/` are copied into the containers by hand with `incus file push`, and `vm/README.md` describes how
-the containers and the registry are rebuilt. The `mitm` Deployment is applied at `replicas: 0`; it is the
+the containers, the registry and the two panels are rebuilt.
+
+```bash
+# both panels on the host browser: Prometheus :9090 and the Wazuh dashboard :8443
+/home/ssle/painel.sh
+``` The `mitm` Deployment is applied at `replicas: 0`; it is the
 attacker of the man-in-the-middle demonstration and is started with
 `kubectl scale deploy/mitm --replicas=1`.
