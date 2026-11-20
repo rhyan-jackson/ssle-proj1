@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion
+  template:
+    metadata:
+      labels:
+        app: ingestion
+    spec:
+      nodeSelector:
+        role: worker
+      containers:
+        - name: ingestion
+          image: 10.255.255.44:5000/ingestion:v3
+          ports:
+            - containerPort: 5001
+              name: metrics
+          env:
+            - name: REGISTRY_URL
+              value: "http://registry:5050"
+            - name: SELF_URL
+              value: "http://ingestion:5001"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion
+spec:
+  selector:
+    app: ingestion
+  ports:
+    - port: 5001
+      targetPort: 5001

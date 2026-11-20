@@ -1,0 +1,5 @@
+credentials.md
+*.bak*
+__pycache__/
+*.swp
+.DS_Store
