@@ -5,13 +5,15 @@ Wazuh interprets logs. Three threats are demonstrated against it, each with a de
 countermeasure.
 
 This repository is the source of truth for everything the system runs: the code of the services, the K3s
-manifests, and the configuration of the Wazuh manager and of the victim. The report lives in `docs/`.
+manifests, the configuration of the Wazuh manager and of the victim, and the few host-level pieces that
+have no manifest. The report lives in `docs/`.
 
 ```
 appsrc/    code and Dockerfile of each service, one directory per service
 k3s/       Kubernetes manifests, applied from the VM
-wazuh/     ossec.conf and local rules of the Wazuh manager
+wazuh/     ossec.conf, local rules and the reputation lists of the manager
 victim/    ossec.conf of the agent on the victim
+vm/        what runs outside Kubernetes: the containers, the registry, the panel
 docs/      the report
 painel.sh  starts the Prometheus panel for the host browser
 ```
@@ -44,11 +46,11 @@ painel.sh  starts the Prometheus panel for the host browser
 
 The man-in-the-middle is executed by poisoning the service registry, which has no authentication and
 overwrites entries by name. The Shellshock rule ships with Wazuh; what this project adds is the binding
-between the rule and the active response.
+between the rule and the active response, and the reputation list in `wazuh/lists/`.
 
 ## Deploying
 
-On the VM, as user `ssle`. `/home/ssle/k3s` and `/home/ssle/appsrc` are symlinks into this repository, so
+On the VM, as user `ssle`. `/home/ssle/appsrc` and `/home/ssle/k8s` are symlinks into this repository, so
 the commands below work from either path.
 
 ```bash
@@ -60,7 +62,8 @@ incus exec docker -- bash -c "cd /srv/app/<svc> && docker build -t 10.255.255.44
 incus exec k3s-master -- kubectl apply -f - < /home/ssle/ssle-proj1/k3s/<svc>.yaml
 ```
 
-The two Incus containers are not managed by K3s: their files in `wazuh/` and `victim/` are copied into
-the containers by hand, with `incus file push`. The `mitm` Deployment is applied at `replicas: 0`; it is
-the attacker of the man-in-the-middle demonstration and is started with
+The two Wazuh containers and the image registry are not managed by K3s. Their files in `wazuh/` and
+`victim/` are copied into the containers by hand with `incus file push`, and `vm/README.md` describes how
+the containers and the registry are rebuilt. The `mitm` Deployment is applied at `replicas: 0`; it is the
+attacker of the man-in-the-middle demonstration and is started with
 `kubectl scale deploy/mitm --replicas=1`.
