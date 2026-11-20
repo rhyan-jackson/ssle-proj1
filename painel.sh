@@ -62,7 +62,12 @@ start_prometheus() {
     if incus exec k3s-master -- systemctl is-active --quiet "$UNIT"; then
         echo "prometheus relay already active"
     else
+        # Restart=always is what makes the panel survive a dropped port-forward:
+        # kubectl exits when the stream breaks, and without it the unit stays dead
+        # until somebody runs this script again. Observed dying twice on 2026-11-20.
         incus exec k3s-master -- systemd-run --unit="$UNIT" --collect \
+            --property=Restart=always --property=RestartSec=3 \
+            --property=StartLimitIntervalSec=0 \
             "$KUBECTL" port-forward svc/prometheus "${PROM_PORT}:${PROM_PORT}" >/dev/null
         echo "prometheus relay started"
     fi
