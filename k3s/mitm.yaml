@@ -70,6 +70,7 @@ spec:
       containers:
         - name: mitm
           image: mitmproxy/mitmproxy:latest
+          imagePullPolicy: IfNotPresent
           command:
             - mitmdump
             - --mode
@@ -88,6 +89,7 @@ spec:
               mountPath: /addons
         - name: poison
           image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
           command: ["python", "/poison/poison.py"]
           volumeMounts:
             - name: poison
