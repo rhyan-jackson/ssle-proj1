@@ -69,7 +69,7 @@ spec:
         role: worker
       containers:
         - name: mitm
-          image: mitmproxy/mitmproxy:latest
+          image: mitmproxy/mitmproxy@sha256:2711066c855659b5af8b1dbb84494ed3eff69b42ece439c60b4fe09a2db829d4
           imagePullPolicy: IfNotPresent
           command:
             - mitmdump

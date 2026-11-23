@@ -54,7 +54,7 @@ spec:
         role: worker
       containers:
         - name: prometheus
-          image: prom/prometheus:latest
+          image: prom/prometheus@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
           imagePullPolicy: IfNotPresent
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
